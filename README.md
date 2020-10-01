@@ -1,9 +1,6 @@
 # eChanter
 The original eChanter Electronic Bagpipe for the Arduino nano.
 
-Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)
-http://creativecommons.org/licenses/by-nc-sa/4.0/
- 
 Audio based on the Mozzi Synth libraries and examples
 Download and install from http://sensorium.github.com/Mozzi/
 Mozzi Synth, Tim Barrass 2012, CC by-nc-sa.
