@@ -3,12 +3,14 @@
 #include <avr/io.h>
 #include <avr/pgmspace.h>
 
-// #include "samples_444.h"		// sample wave tables for GHB at 444Hz
-#include "samples_470.h"		// sample wave tables for GHB at 470Hz
+// #include "samples_444.h"	// sample wave tables for GHB at 444Hz
+//#include "samples_470.h"	// sample wave tables for GHB at 470Hz
+#include "samples_pc.h"		// sample wave tables for PC at 466Hz
+#include "samples_test.h"		// sample wave tables for PC at 466Hz
 
 
 //#define DORKBOARD   true // uncomment for Dorkboard specific LED behavior
-#define SERIAL_DEBUG false // true/false to enable/desiable serial print debugging
+//#define SERIAL_DEBUG true // true/false to enable/desiable serial print debugging
 
 #define SAMPLE_RATE 8000
 
@@ -97,38 +99,37 @@ char pinvalC[3] = {1<<KEYA4,1<<KEYA5,1<<KEYA3};
 int noteTone = 8; // current tone playing
 int tv = 8; // temp var for holding tone to play
 
-const int numMenus = 1; // number of configuration menus - better as a define
-int currentMenu = 0; // the menu number currently being accessed
-int menuStateUp = 0; // state var for "menu up"
-int menuStateDown = 0;  // state var for "menu up"
-
-int steadyDrone = 0; // the sensor level that represents "steady" pressure
-int droneVal = 0; // the sensor reading
-boolean drones = false;
-boolean dronesOn = false;
-boolean strictDrones = false;
-boolean droneSensor = false;
-float strictDronesMultiplier = 0.01;
-float lazyDronesMultiplier = 0.1;
-
 
 void setup()
 {
-  #ifdef DRONE_AMPLITUDE_CORRECTION
-  int i=0;
-  for (;i<drone_len;i++) {
-    // slightly dominant bass
-    drone_sw [i] += DRONE_AMPLITUDE_CORRECTION;
-  }
-  #endif
   
   pinMode(ledPin,OUTPUT);
   #if SERIAL_DEBUG
-  Serial.begin(9600);      // connect to the serial por//t
+  Serial.begin(57600);      // connect to the serial por//t
   Serial.println("ready....");
   #endif
   startPlayback();
 }
+
+
+uint16_t phase_inc;
+uint16_t counter = 0;
+
+
+void set_freq(float freq) {
+  //  http://codeandlife.com/2012/03/13/fast-dds-with-atmega88/  
+  // Freq = ( (F_CPU / 11) / 256) * (step/256)
+  // Solving this for step we get:
+  // step = Freq * 256 * 256 * 11 / F_CPU
+
+  // f = (8000/256) * step/256
+  //   = 31.25*s/256
+  // s = f * 256 / 31.25
+
+  phase_inc = (uint16_t) ((freq * 256) / 31.25);
+
+}
+
 
 void loop ()
 {
@@ -136,24 +137,6 @@ void loop ()
   char i=0;
   while (1==1) {
     tv = 8;
-
-    capvalC[0] = getcapPC(pinvalC[0]);
-    if (capvalC[0] > TRIGGER_VAL) {
-      stopPlayback();
-      delay(500);
-      #if SERIAL_DEBUG
-      Serial.print("menu pin # A4");
-      Serial.print(" capval = ");
-      Serial.println(capvalC[0]);
-      #endif
-      currentMenu = 1;
-      config();
-      #if SERIAL_DEBUG
-      Serial.print("configuration complete");
-      #endif
-      delay(500);
-      startPlayback();
-    }
 
     for(i = 0; i < 6; i++)
     {
@@ -189,152 +172,32 @@ void loop ()
     }
     noteTone = tv;
 
-    if (drones && droneSensor) {
-      droneVal = analogRead(DRONE_SENSOR_PIN);
-      #if SERIAL_DEBUG
-      Serial.print("drone sensor val = ");
-      Serial.print(droneVal);
-      #endif
 
-      float range = (strictDrones) ? strictDronesMultiplier : lazyDronesMultiplier ;
-      // set the drones on or off
-      dronesOn = ( (droneVal < steadyDrone*(1.0-range) ) ||  (droneVal > steadyDrone*(1.0+range)) ) ? false : true;
-    }
-        
+  if (noteTone == 8) { //LG
+    set_freq(414.0);
+  } else if (noteTone == 7) { // LA
+    set_freq(466.0);
+  } else if (noteTone == 6) { // B
+    set_freq(524.0);
+  } else if (noteTone == 5) { // C
+    set_freq(583.0);
+  } else if (noteTone == 4) { // D
+    set_freq(621.0);
+  } else if (noteTone == 3) { // E
+    set_freq(699.0);
+  } else if (noteTone == 2) { // F
+    set_freq(777.0);
+  } else if (noteTone == 1) { // HG
+    set_freq(828.0);
+  } else if (noteTone == 0) { // HA
+    set_freq(932.0);
+  }
+
     #if SERIAL_DEBUG
     Serial.println("");
     #endif
   }
 }
-
-/* CONFIGURATION MENU CODE */
-void config() {
-  char i = 0;
-  while (currentMenu > 0) {
-    for(i = 0; i < 3; i++) {
-      capvalC[i] = getcapPC(pinvalC[i]);
-    }
-    if (capvalC[0] > TRIGGER_VAL) {
-      currentMenu = (numMenus == currentMenu) ? 0 : currentMenu++ ;
-      ledOff();
-      if (currentMenu == 0) {    // reset menu states
-        menuStateUp = 0;
-        menuStateDown = 0;
-      }
-      #if SERIAL_DEBUG
-      Serial.print("CURRENT MENU:");
-      Serial.println(currentMenu);
-      #endif
-    } else if (capvalC[1] > TRIGGER_VAL) {
-      ledOff();
-      menuChoiceUp();
-    } else if (capvalC[2] > TRIGGER_VAL) {
-      ledOff();
-      menuChoiceDown();
-    }
-    delay(500);
-  }
-}
-
-
-void menuChoiceUp() {
-  switch (currentMenu) {
-    case 1:
-      drones = (drones) ? false : true;
-      dronesOn = drones;
-      if (drones) ledOn();
-      else ledOff();
-      #if SERIAL_DEBUG
-      Serial.print("DRONES ON:");
-      Serial.println(drones, DEC);
-      #endif
-      steadyDrone = analogRead(DRONE_SENSOR_PIN);
-      #if SERIAL_DEBUG
-      Serial.print("  DRONES SENSOR:");
-      Serial.println(steadyDrone);
-      #endif
-      break;
-    case 2:
-        break;
-       default: break;
-  }
-       
-}
-
-void menuChoiceDown() {
-  switch (currentMenu) {
-    case 1:
-      switch (menuStateDown) {
-        case 0: 
-                droneSensor = true; 
-                strictDrones = true;
-                flashLed(1,300);
-                break;
-        case 1: 
-                droneSensor = true; 
-                strictDrones = false; // ie "lazy mode"
-                flashLed(2,300);
-                break;
-        case 2: 
-                droneSensor = false; // ie no sensor - always on
-                flashLed(3,300);
-                break;
-      }
-      #if SERIAL_DEBUG
-      Serial.print("DRONE STRICT MODE:");
-      Serial.println(strictDrones, DEC);
-      Serial.print("DRONE SENSOR IN USE:");
-      Serial.println(droneSensor, DEC);
-      #endif
-      if (menuStateDown > 2) menuStateDown = 0;
-      else menuStateDown++;
-      break;
-    case 2:
-        break;
-       default: break;
-  }
-       
-}
-
-
-/* UTILITY FUNCTIONS */
-
-// flashes LED on then off for the given number of millis
-// eg. flashLed(3,100) will do 3 cycles of : flash the LED on for 100ms, off for 100ms
-void flashLed(int count, int ms) {
-  for (int i =0; i<count;i++) {
-    #ifdef DORKBOARD
-    digitalWrite(ledPin,LOW);
-    delay(ms);
-    digitalWrite(ledPin,HIGH);
-    delay(ms);
-    #endif
-    #ifndef DORKBOARD
-    digitalWrite(ledPin,HIGH);
-    delay(ms);
-    digitalWrite(ledPin,LOW);
-    delay(ms);
-    #endif
-  }
-}  
-
-void ledOn() {
-    #ifdef DORKBOARD
-    digitalWrite(ledPin,LOW);
-    #endif
-    #ifndef DORKBOARD
-    digitalWrite(ledPin,HIGH);
-    #endif
-}  
-
-void ledOff() {
-    #ifdef DORKBOARD
-    digitalWrite(ledPin,HIGH);
-    #endif
-    #ifndef DORKBOARD
-    digitalWrite(ledPin,LOW);
-    #endif
-}  
 
 
 /* SENSOR MEASUREMENT CODE */
@@ -384,16 +247,9 @@ char getcapPB(char pin)
 
 /* PWM AUDIO CODE : This is called at 8000 Hz to load the next sample. */
 ISR(TIMER1_COMPA_vect) {
-  if (tone_ha_idx == tone_ha_len) tone_ha_idx = 0;
-  if (tone_hg_idx == tone_hg_len) tone_hg_idx = 0;
-  if (tone_f_idx == tone_f_len) tone_f_idx = 0;
-  if (tone_e_idx == tone_e_len) tone_e_idx = 0;
-  if (tone_d_idx == tone_d_len) tone_d_idx = 0;
-  if (tone_c_idx == tone_c_len) tone_c_idx = 0;
-  if (tone_b_idx == tone_b_len) tone_b_idx = 0;
-  if (tone_la_idx == tone_la_len) tone_la_idx = 0;
-  if (tone_lg_idx == tone_lg_len) tone_lg_idx = 0;
-  if (drone_idx == drone_len) drone_idx = 0;
+/*
+  if (idx == len) idx = 0;
+
 
   if (noteTone == 8) { //LG
     mixed_sample = tone_lg_sw[tone_lg_idx];
@@ -417,18 +273,15 @@ ISR(TIMER1_COMPA_vect) {
   mixed_sample += 50; // dc offset correction
   if (dronesOn) mixed_sample = (mixed_sample + drone_sw[drone_idx]) / 2;
 
-  OCR2A = mixed_sample;
+*/
+  counter += phase_inc;
+  OCR2A = sample[counter >> 8];
+
+
+//  OCR2A = sample[idx];
   
-  tone_ha_idx++;
-  tone_hg_idx++;
-  tone_f_idx++;
-  tone_e_idx++;
-  tone_d_idx++;
-  tone_c_idx++;
-  tone_b_idx++;
-  tone_la_idx++;
-  tone_lg_idx++;
-  drone_idx++;
+//  idx++;
+
 }
 
 
