@@ -4,21 +4,33 @@ The original eChanter Electronic Bagpipe for Arduino.
 Branches/Versions
 ------------------------------
 Main 	- last version to be verified, pinouts for Arduino Nano boards.
+
 	- wavetable systhesis, real GHB and PC samples
+	
 	- pressure sensor
+	
 	- configuration at runtime
+	
 2.0 	- pinouts for Arduino Nano boards.
+
 	- wavetable systhesis, synthesized samples
+	
 1.0 	- pinouts for Arduino Duemilanove (and pin compatable) ATmega328p boards
+
 	- wavetable systhesis, synthesized samples
+
 
 
 Requirements
 ------------------------------
 1.0 and 2.0 
-Arduino IDE version 1.5.7
-Any 'Duino that uses the ATMega328 uC
+
+	- Arduino IDE version 1.5.7
+	
+	- Any 'Duino that uses the ATMega328 uC
+	
 3.0 also requires Mozzi Synth http://sensorium.github.io/Mozzi/ version 2014-08-09-14:15 
+
 
 
 Hardware Build
