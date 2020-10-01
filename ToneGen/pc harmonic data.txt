@@ -1,0 +1,100 @@
+/*
+this data produced a nice PC-ish sound
+[1.0, 0.8],
+[3.0, 0.75],
+[4.0, 0.8],
+[7.0, 0.14],
+[9.0, 0.5],
+[11.0, 0.12],
+[13.0, 0.17]
+ */
+[
+  { "id"        : "PC_LowG",
+    "frequency" : 414.0,
+    "amplitude" : 1.0,
+    "comment"   : "So called MacNeill tuning with Just tuned D. Partial dB norm by 21.7",
+    "partials"  : [
+                    [1.0, 1.0],
+                    [2.0, 0.05],
+                    [3.0, 0.26],
+                    [4.0, 0.13],
+                    [5.0, 0.56],
+                    [6.0, 0.13],
+                    [7.0, 0.25],
+                    [8.0, 0.03],
+                    [9.0, 0.07]
+                  ]
+  },
+
+  { "id"        : "PC_LowA",
+    "frequency" : 466.0,
+    "amplitude" : 1.0,
+    "partials"  : [
+                    [1.0, 1.0],
+                    [2.0, 0.05],
+                    [3.0, 0.26],
+                    [4.0, 0.13],
+                    [5.0, 0.56],
+                    [6.0, 0.13],
+                    [7.0, 0.25],
+                    [8.0, 0.03],
+                    [9.0, 0.07]
+                  ]
+  },
+
+  { "id"        : "PC_B",
+    "frequency" : 524.0,
+    "amplitude" : 0.92,
+    "partials"  : "PC_LowA"
+  },
+
+  { "id"        : "PC_CNat",
+    "frequency" : 559.0,
+    "amplitude" : 0.92,
+    "partials"  : "PC_LowA"
+  },
+  
+  { "id"        : "PC_C",
+    "frequency" : 583.0,
+    "amplitude" : 0.92,
+    "partials"  : "PC_LowA"
+  },
+  
+  { "id"        : "PC_D",
+    "frequency" : 621.0,
+    "amplitude" : 0.92,
+    "partials"  : "PC_LowA"
+  },
+  
+  { "id"        : "PC_E",
+    "frequency" : 699.0,
+    "amplitude" : 0.92,
+    "partials"  : "PC_LowA"
+  },
+  
+  { "id"        : "PC_FNat",
+    "frequency" : 746.0,
+    "amplitude" : 0.92,
+    "partials"  : "PC_LowA"
+  },
+
+  
+  { "id"        : "PC_F",
+    "frequency" : 777.0,
+    "amplitude" : 0.92,
+    "partials"  : "PC_LowA"
+  },
+
+  { "id"        : "PC_HighG",
+    "frequency" : 839.0,
+    "amplitude" : 0.92,
+    "partials"  : "PC_LowA"
+  },
+  
+  { "id"        : "PC_HighA",
+    "frequency" : 932.0,
+    "amplitude" : 0.92,
+    "partials"  : "PC_LowA"
+  } 
+  
+]
