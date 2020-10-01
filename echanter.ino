@@ -1,353 +1,369 @@
-#include <stdint.h>
-#include <avr/interrupt.h>
-#include <avr/io.h>
-#include <avr/pgmspace.h>
+/*
+    eChanter, Tim Malcolm 2010-2015 CC by-nc-sa.
+*/
+/*  Audio based on the Mozzi Synth libraries and examples
+    Download and install from http://sensorium.github.com/Mozzi/
+    Mozzi, Tim Barrass 2012, CC by-nc-sa.
+*/
 
-// #include "samples_444.h"	// sample wave tables for GHB at 444Hz
-//#include "samples_470.h"	// sample wave tables for GHB at 470Hz
-#include "samples_pc.h"		// sample wave tables for PC at 466Hz
-#include "samples_test.h"		// sample wave tables for PC at 466Hz
+/*
+    Circuit Diagrams  https://sourceforge.net/p/echanter/code/HEAD/tree/diagrams
 
+    Finger Sensor inputs
+      D2 -> LA
+      D3 -> B
+      D4 -> C
+      D5 -> D
+      D6 -> E
+      D7 -> F
+      D8 -> HG
+      D12-> HA
 
-//#define DORKBOARD   true // uncomment for Dorkboard specific LED behavior
-//#define SERIAL_DEBUG true // true/false to enable/desiable serial print debugging
+    Pressure Sensor input
+      A0
 
-#define SAMPLE_RATE 8000
+    Audio Outputs
+      D9 in standard mode
+      D9 + D10 in HIFI mode
 
-#if defined(__AVR_ATmega328P__)
+*/
 
-  // sensor key analog 0-5
-  #define KEYA0    PORTC0        // capture input - analog 0
-  #define KEYA1    PORTC1        // capture input - analog 1
-  #define KEYA2    PORTC2        // capture input - analog 2
-  #define KEYA3    PORTC3        // capture input - analog 3
-  #define KEYA4    PORTC4        // capture input - analog 4
-  #define KEYA5    PORTC5        // capture input - analog 5
+//#include <ADC.h>  // Teensy 3.0/3.1 uncomment this line and install http://github.com/pedvide/ADC
+#include <MozziGuts.h>
+#include <Sample.h> // Sample template
 
-  // sensor key digital 2-7
-  //#define KEY0    PORTD0        // capture input - digital 0
-  //#define KEY1    PORTD1        // capture input - digital 1
-  #define KEY2    PORTD2        // capture input - digital 2
-  #define KEY3    PORTD3        // capture input - digital 3
-  #define KEY4    PORTD4        // capture input - digital 4
-  #define KEY5    PORTD5        // capture input - digital 5
-  #define KEY6    PORTD6        // capture input - digital 6
-  #define KEY7    PORTD7        // capture input - digital 7
-
-  // sensor key digital 8-13
-  #define KEY8    PORTB0        // capture input - digital 8
-  #define KEY9    PORTB1        // capture input - digital 9
-  #define KEY10   PORTB2        // capture input - digital 10
-  #define KEY11   PORTB3        // capture input - digital 11
-  #define KEY12   PORTB4        // capture input - digital 12
-  #define KEY13   PORTB5        // capture input - digital 13
-
+#include "echanter_config.h"
+#if INSTRUMENT == GHB
+#include "ghb.h"
 #else
-
-  // sensor key analog 0-5
-  #define KEYA0    PC0        // capture input - analog 0
-  #define KEYA1    PC1        // capture input - analog 1
-  #define KEYA2    PC2        // capture input - analog 2
-  #define KEYA3    PC3        // capture input - analog 3
-  #define KEYA4    PC4        // capture input - analog 4
-  #define KEYA5    PC5        // capture input - analog 5
-
-  // sensor key digital 2-7
-  //#define KEY0    PD0        // capture input - digital 0
-  //#define KEY1    PD1        // capture input - digital 1
-  #define KEY2    PD2        // capture input - digital 2
-  #define KEY3    PD3        // capture input - digital 3
-  #define KEY4    PD4        // capture input - digital 4
-  #define KEY5    PD5        // capture input - digital 5
-  #define KEY6    PD6        // capture input - digital 6
-  #define KEY7    PD7        // capture input - digital 7
-
-  // sensor key digital 8-13
-  #define KEY8    PB0        // capture input - digital 8
-  #define KEY9    PB1        // capture input - digital 9
-  #define KEY10   PB2        // capture input - digital 10
-  #define KEY11   PB3        // capture input - digital 11
-  #define KEY12   PB4        // capture input - digital 12
-  #define KEY13   PB5        // capture input - digital 13
-
-  #define DRONE_SENSOR_PIN 0 // analog pin 0
-  #define TRIGGER_VAL 2 // sensor trigger value (<val is on, >= val is off)
-  #define DRONE_AMPLITUDE_CORRECTION 40 // temp correction to adjust for drone wave table amplitude
-
+#include "pc.h"
 #endif
 
-#define DRONE_SENSOR_PIN 0 // analog pin 0
-#define TRIGGER_VAL 2 // sensor trigger value (<val is on, >= val is off)
-#define DRONE_AMPLITUDE_CORRECTION 40 // temp correction to adjust for drone wave table amplitude
+#define CONTROL_RATE 256 //512 // 64 // powers of 2 please
+#define PRESSURE_INPUT_PIN  0 // set the input for the input to analog pin 0
+
+Sample <INST_NUM_CELLS, AUDIO_RATE>instrument(INST_DATA);
+#if INSTRUMENT == GHB
+Sample <DRONE_NUM_CELLS, AUDIO_RATE>drone(DRONE_DATA);
+#endif
+
+int curr_sensor = 0;
+
+// for volume control
+unsigned char vol = 255;
+bool pressure_sensor = false;
+int pressure_min = 0;
+
+byte fmap = 0;  //D2-D7 (bits 2,3,4,5,6,7)
+int i, j, k = 0; //general counters
+int note_detected = 0;
+int note_playing = 0;
+int pressure_delta = 0;
 
 
-/* AUDIO/VISUAL OUTPUT PINS */
-int ledPin = 13;
-int speakerPin = 11;
+void setup(){
 
-// each wave sample gets mixed into the 'sample' variable which is sent to the PWM output
-int mixed_sample = 0;
+#if CAPTOUCH
+#else
+  pinMode(2,INPUT);pinMode(3,INPUT);pinMode(4,INPUT);pinMode(5,INPUT);
+  pinMode(6,INPUT);pinMode(7,INPUT);pinMode(8,INPUT);pinMode(12,INPUT);
+#endif
 
-/* SENSOR RELATED VARIABLES */
-int capvalD[6] = {100,100,100,100,100,100};
-int capvalB[2] = {100,100};
-int capvalC[3] = {100,100,100};
-char pinvalD[6] = {1<<KEY2,1<<KEY3,1<<KEY4,1<<KEY5,1<<KEY6,1<<KEY7};
-char pinvalB[2] = {1<<KEY8,1<<KEY9};
-char pinvalC[3] = {1<<KEYA4,1<<KEYA5,1<<KEYA3};
-
-int noteTone = 8; // current tone playing
-int tv = 8; // temp var for holding tone to play
-
-
-void setup()
-{
-  
-  pinMode(ledPin,OUTPUT);
   #if SERIAL_DEBUG
-  Serial.begin(57600);      // connect to the serial por//t
-  Serial.println("ready....");
+    Serial.begin(115200);
   #endif
-  startPlayback();
+
+#if CAPTOUCH // compiler didn't like narrower defs so we have code repetition :(
+  if (readCapacitivePin(sensor_pins[3]) >= CAPTOUCH_TRIGGER) { /* D sensor touched */
+    pressure_sensor = true;
+    #if SERIAL_DEBUG
+      Serial.println("Pressure Sensor ON");
+    #endif
+
+    while (readCapacitivePin(sensor_pins[3]) >= CAPTOUCH_TRIGGER) {
+       pressure_min = analogRead(PRESSURE_INPUT_PIN); // value is 0-1023
+       #if SERIAL_DEBUG
+         Serial.print("Pressure value: ");
+         Serial.println(pressure_min);
+       #endif
+
+    }
+   }
+#else
+  if (digitalRead(sensor_pins[3]) == LOW) {  /* D sensor touched */
+    pressure_sensor = true;
+    #if SERIAL_DEBUG
+      Serial.println("Pressure Sensor ON");
+    #endif
+
+    while (digitalRead(sensor_pins[3]) == LOW) {
+       pressure_min = analogRead(PRESSURE_INPUT_PIN); // value is 0-1023
+       #if SERIAL_DEBUG
+         Serial.print("Pressure value: ");
+         Serial.println(pressure_min);
+       #endif
+
+    }
+   }
+#endif
+
+
+  set_freqs(INST_SAMPLERATE/INST_NUM_CELLS);
+
+  startMozzi(CONTROL_RATE); // set a control rate of 64 (powers of 2 please)
+
+  instrument.setLoopingOn();
+  instrument.setFreq(note_freqs[0]); // set the frequency
+
+#if INSTRUMENT == GHB
+  drone.setLoopingOn();
+  drone.setFreq((float)INST_SAMPLERATE/DRONE_NUM_CELLS); // set the frequency
+#endif
+
+}
+
+void set_freqs(float f) {
+  #if SERIAL_DEBUG
+    Serial.println("Frequency table:");
+  #endif
+
+  // setup freq. table
+  for (i=0; i<11; i++) {
+    note_freqs[i] = (f*note_ratios[i][0])/note_ratios[i][1];
+    #if SERIAL_DEBUG
+      Serial.println(note_freqs[i]);
+    #endif
+   }
+
+
 }
 
 
-uint16_t phase_inc;
-uint16_t counter = 0;
+void updateControl(){
+
+  byte fb = 0;
+
+  int sensor_val = 0;
+  // put changing controls in here
+  if (pressure_sensor) {
+    sensor_val = mozziAnalogRead(PRESSURE_INPUT_PIN); // value is 0-1023
+
+    // volume is on or off based on sensor input.
+    // for instruments with dynamics (eg clarinet) uncomment mappings below
+    // map it to an 8 bit range for efficient calculations in updateAudio
+    // vol = map(sensor_value, 0, 1023, 0, 255);
+
+    if (sensor_val >= pressure_min) vol = 255;
+    else vol = 0;
+
+    // update frequency delta to simulate over/under blowing
+
+  }
+
+  /* Read the relevant pin registers and construct a single byte 'map'   */
+  /* of the pin states. Touched pins will be HIGH, untouched pins LOW    */
 
 
-void set_freq(float freq) {
-  //  http://codeandlife.com/2012/03/13/fast-dds-with-atmega88/  
-  // Freq = ( (F_CPU / 11) / 256) * (step/256)
-  // Solving this for step we get:
-  // step = Freq * 256 * 256 * 11 / F_CPU
+#if CAPTOUCH
+  // set map
+  if (readCapacitivePin(sensor_pins[curr_sensor]) >= CAPTOUCH_TRIGGER) {
+    // make bit to be 1
+    fmap |= (1 << (7-curr_sensor));
+  }
+  curr_sensor++;
 
-  // f = (8000/256) * step/256
-  //   = 31.25*s/256
-  // s = f * 256 / 31.25
-
-  phase_inc = (uint16_t) ((freq * 256) / 31.25);
-
-}
-
-
-void loop ()
-{
-
-  char i=0;
-  while (1==1) {
-    tv = 8;
-
-    for(i = 0; i < 6; i++)
-    {
-      capvalD[i] = getcapPD(pinvalD[i]);
-      #if SERIAL_DEBUG
-      Serial.print("pin # ");
-      Serial.print(i+0);
-      Serial.print(" capval = ");
-      Serial.println(capvalD[i]);
-      #endif
-      
-      if (capvalD[i] <= TRIGGER_VAL) {
-        tv=i;
-        i=15;  
-      }
-    }
-    if (tv == 8) {
-      for(i = 0; i < 2; i++)
-      {
-        capvalB[i] = getcapPB(pinvalB[i]);
-        #if SERIAL_DEBUG
-        Serial.print("pin # ");
-        Serial.print(i+6);
-        Serial.print(" capval = ");
-        Serial.println(capvalB[i]);
-        #endif
-        
-        if (capvalB[i] <= TRIGGER_VAL) {
-          tv=i+6;
-          i=15;  
-        }
-      }
-    }
-    noteTone = tv;
-
-
-  if (noteTone == 8) { //LG
-    set_freq(414.0);
-  } else if (noteTone == 7) { // LA
-    set_freq(466.0);
-  } else if (noteTone == 6) { // B
-    set_freq(524.0);
-  } else if (noteTone == 5) { // C
-    set_freq(583.0);
-  } else if (noteTone == 4) { // D
-    set_freq(621.0);
-  } else if (noteTone == 3) { // E
-    set_freq(699.0);
-  } else if (noteTone == 2) { // F
-    set_freq(777.0);
-  } else if (noteTone == 1) { // HG
-    set_freq(828.0);
-  } else if (noteTone == 0) { // HA
-    set_freq(932.0);
+  //increment, return until all sensors are sampled, then toggle bitmap, reset counter and continue
+  if (curr_sensor % num_sensors == 0) {
+    fmap = ~fmap; // toggle bitmap because bushbutton code is LOW when touched.
+    curr_sensor = 0; // rset counter
+  } else {
+    return;
   }
 
     #if SERIAL_DEBUG
-    Serial.println("");
+      Serial.print("FMAP ");
+      Serial.println(fmap, BIN);
     #endif
+
+
+#else // pushbuttonetc, finger sensors
+
+  fmap = PIND >> 2;  // get rid of lowest 2 bytes,  fill top 2 bytes
+
+  #if SERIAL_DEBUG
+    Serial.print(fmap, BIN);
+    Serial.print("  ");
+  #endif
+
+  fb = PINB; // D8, D11 (bits 0, 3)
+  #if SERIAL_DEBUG
+    Serial.print(fb, BIN);
+    Serial.print("  ");
+  #endif
+
+  if (fb & B00000001) { // true only if bit ZERO is 1
+    // make  bit 6 in fmap to be 1
+    fmap |= (1 << 6);
+  } else {
+    // untouched make bit 6 to be 0
+    fmap &= ~(1 << 6);
   }
-}
 
-
-/* SENSOR MEASUREMENT CODE */
-
-// returns capacity on one input pin
-// pin must be the bitmask for the pin e.g. (1<<PB0)
-char getcapPD(char pin)
-{
-  char i = 0;
-  DDRD &= ~pin;          // input
-  PORTD |= pin;          // pullup on
-  for(i = 0; i < 16; i++)
-    if( (PIND & pin) ) break;
-  PORTD &= ~pin;         // low level
-  DDRD |= pin;           // discharge
-  return i;
-}
-
-// returns capacity on one input pin
-// pin must be the bitmask for the pin e.g. (1<<PB0)
-char getcapPC(char pin)
-{
-  char i = 0;
-  DDRC &= ~pin;          // input
-  PORTC |= pin;          // pullup on
-  for(i = 0; i < 16; i++)
-    if( (PINC & pin) ) break;
-  PORTC &= ~pin;         // low level
-  DDRC |= pin;           // discharge
-  return i;
-}
-
-
-// returns capacity on one input pin
-// pin must be the bitmask for the pin e.g. (1<<PB0)
-char getcapPB(char pin)
-{
-  char i = 0;
-  DDRB &= ~pin;          // input
-  PORTB |= pin;          // pullup on
-  for(i = 0; i < 16; i++)
-    if( (PINB & pin) ) break;
-  PORTB &= ~pin;         // low level
-  DDRB |= pin;           // discharge
-  return i;
-}
-
-/* PWM AUDIO CODE : This is called at 8000 Hz to load the next sample. */
-ISR(TIMER1_COMPA_vect) {
-/*
-  if (idx == len) idx = 0;
-
-
-  if (noteTone == 8) { //LG
-    mixed_sample = tone_lg_sw[tone_lg_idx];
-  } else if (noteTone == 7) { // LA
-    mixed_sample = tone_la_sw[tone_la_idx];
-  } else if (noteTone == 6) { // B
-    mixed_sample = tone_b_sw[tone_b_idx];
-  } else if (noteTone == 5) { // C
-    mixed_sample = tone_c_sw[tone_c_idx];
-  } else if (noteTone == 4) { // D
-    mixed_sample = tone_d_sw[tone_d_idx];
-  } else if (noteTone == 3) { // E
-    mixed_sample = tone_e_sw[tone_e_idx];
-  } else if (noteTone == 2) { // F
-    mixed_sample = tone_f_sw[tone_f_idx];
-  } else if (noteTone == 1) { // HG
-    mixed_sample = tone_hg_sw[tone_hg_idx];
-  } else if (noteTone == 0) { // HA
-    mixed_sample = tone_ha_sw[tone_ha_idx];
+  if (fb & B00010000) { // true only if bit 3 is 1
+    // make  bit 7 in fmap to be 1
+    fmap |= (1 << 7);
+  } else {
+    // untouched make bit 7 to be 0
+    fmap &= ~(1 << 7);
   }
-  mixed_sample += 50; // dc offset correction
-  if (dronesOn) mixed_sample = (mixed_sample + drone_sw[drone_idx]) / 2;
 
-*/
-  counter += phase_inc;
-  OCR2A = sample[counter >> 8];
+  #if SERIAL_DEBUG
+    Serial.println(fmap, BIN);
+  #endif
+
+#endif
+
+  note_detected = -1;
+
+  for (i=0; i< table_len; i++) {
+    if ((fmap ^ finger_table[i]) == 0) {
+      note_detected = i;
+    }
+  }
+  // gracenotes
+  if (note_detected == -1) {
+    if ((fmap >> 7) & 1 ) { note_detected = 0; }
+    else if ((fmap >> 6) & 1 ) { note_detected = 2; }
+    else if ((fmap >> 5) & 1 ) { note_detected = 4; }
+    else if ((fmap >> 4) & 1 ) { note_detected = 5; }
+    else if ((fmap >> 3) & 1 ) { note_detected = 6; }
+    else if ((fmap >> 2) & 1 ) { note_detected = 7; }
+    else if ((fmap >> 1) & 1 ) { note_detected = 8; }
+    else if ((fmap >> 0) & 1 ) { note_detected = 9; }
+    else { /* LG or no note? */ note_detected = 10; }
+  }
 
 
-//  OCR2A = sample[idx];
+  if (note_detected != note_playing) {
+    note_playing =  note_detected;
+    instrument.setFreq(note_freqs[note_playing] + pressure_delta);
+
+  }
+
+  // reset fingermap
+  fmap = 0;
+
+}
+
+
+int updateAudio(){
+
+  if (pressure_sensor) {
+    if(AUDIO_MODE == HIFI)
+      #if INSTRUMENT == GHB
+      return ((int)instrument.next() + drone.next())<<4;
+      #else
+      return ( ( instrument.next() * vol)>>2);
+      #endif
+
+    else 
+      return ( ( instrument.next() * vol)>>8);
   
-//  idx++;
+  } else {
+    if(AUDIO_MODE == HIFI)
+       #if INSTRUMENT == GHB
+       return ((int)instrument.next() + drone.next())<<4;
+       #else
+       return ( ((int)instrument.next() * vol)>>2); 
+       #endif
+      
+    else
+      return ( ( instrument.next() * vol)>>8); 
+  }
+
+// original unmodified signal
+//return aSin.next(); // return an int signal centred around 0
+
 
 }
 
 
-void startPlayback()
-{
-    pinMode(speakerPin, OUTPUT);
-
-    // Set up Timer 2 to do pulse width modulation on the speaker
-    // pin.
-
-    // Use internal clock (datasheet p.160)
-    ASSR &= ~(_BV(EXCLK) | _BV(AS2));
-
-    // Set fast PWM mode  (p.157)
-    TCCR2A |= _BV(WGM21) | _BV(WGM20);
-    TCCR2B &= ~_BV(WGM22);
-
-    // Do non-inverting PWM on pin OC2A (p.155)
-    // On the Arduino this is pin 11.
-    TCCR2A = (TCCR2A | _BV(COM2A1)) & ~_BV(COM2A0);
-    TCCR2A &= ~(_BV(COM2B1) | _BV(COM2B0));
-
-    // No prescaler (p.158)
-    TCCR2B = (TCCR2B & ~(_BV(CS12) | _BV(CS11))) | _BV(CS10);
-
-    // Set initial pulse width to the first sample.
-    OCR2A = tone_ha_sw[0];
+void loop(){
+  audioHook(); // required here
 
 
-    // Set up Timer 1 to send a sample every interrupt.
-
-    cli();
-
-    // Set CTC mode (Clear Timer on Compare Match) (p.133)
-    // Have to set OCR1A *after*, otherwise it gets reset to 0!
-    TCCR1B = (TCCR1B & ~_BV(WGM13)) | _BV(WGM12);
-    TCCR1A = TCCR1A & ~(_BV(WGM11) | _BV(WGM10));
-
-    // No prescaler (p.134)
-    TCCR1B = (TCCR1B & ~(_BV(CS12) | _BV(CS11))) | _BV(CS10);
-
-    // Set the compare register (OCR1A).
-    // OCR1A is a 16-bit register, so we have to do this with
-    // interrupts disabled to be safe.
-    OCR1A = F_CPU / SAMPLE_RATE;    // 16e6 / 8000 = 2000
-
-    // Enable interrupt when TCNT1 == OCR1A (p.136)
-    TIMSK1 |= _BV(OCIE1A);
-
-    sei();
 }
 
-void stopPlayback()
-{
-    // Disable playback per-sample interrupt.
-    TIMSK1 &= ~_BV(OCIE1A);
+#if CAPTOUCH
 
-    // Disable the per-sample timer completely.
-    TCCR1B &= ~_BV(CS10);
+// captouch code from eChanter, unrolled to be faster and more reliable, courtesy of
+//  Danial Martinez, GPL v2
+//  https://github.com/danielmartinez/eClarin
+//
+uint8_t readCapacitivePin(int pinToMeasure) {
+  // Variables used to translate from Arduino to AVR pin naming
+  volatile uint8_t* port;
+  volatile uint8_t* ddr;
+  volatile uint8_t* pin;
+  // Here we translate the input pin number from
+  //  Arduino pin number to the AVR PORT, PIN, DDR,
+  //  and which bit of those registers we care about.
+  byte bitmask;
+  port = portOutputRegister(digitalPinToPort(pinToMeasure));
+  ddr = portModeRegister(digitalPinToPort(pinToMeasure));
+  bitmask = digitalPinToBitMask(pinToMeasure);
+  pin = portInputRegister(digitalPinToPort(pinToMeasure));
+  // Discharge the pin first by setting it low and output
+  *port &= ~(bitmask);
+  *ddr  |= bitmask;
+ // delay(1);
+  // Make the pin an input with the internal pull-up on
+  *ddr &= ~(bitmask);
+  *port |= bitmask;
 
-    // Disable the PWM timer.
-    TCCR2B &= ~_BV(CS10);
+  // Now see how long the pin to get pulled up. This manual unrolling of the loop
+  // decreases the number of hardware cycles between each read of the pin,
+  // thus increasing sensitivity.
+  uint8_t cycles = 17;
+       if (*pin & bitmask) { cycles =  0;}
+  else if (*pin & bitmask) { cycles =  1;}
+  else if (*pin & bitmask) { cycles =  2;}
+  else if (*pin & bitmask) { cycles =  3;}
+  else if (*pin & bitmask) { cycles =  4;}
+  else if (*pin & bitmask) { cycles =  5;}
+  else if (*pin & bitmask) { cycles =  6;}
+  else if (*pin & bitmask) { cycles =  7;}
+  else if (*pin & bitmask) { cycles =  8;}
+  else if (*pin & bitmask) { cycles =  9;}
+  else if (*pin & bitmask) { cycles = 10;}
+  else if (*pin & bitmask) { cycles = 11;}
+  else if (*pin & bitmask) { cycles = 12;}
+  else if (*pin & bitmask) { cycles = 13;}
+  else if (*pin & bitmask) { cycles = 14;}
+  else if (*pin & bitmask) { cycles = 15;}
+  else if (*pin & bitmask) { cycles = 16;}
 
-    digitalWrite(speakerPin, LOW);
+  // Discharge the pin again by setting it low and output
+  //  It's important to leave the pins low if you want to
+  //  be able to touch more than 1 sensor at a time - if
+  //  the sensor is left pulled high, when you touch
+  //  two sensors, your body will transfer the charge between
+  //  sensors.
+  *port &= ~(bitmask);
+  *ddr  |= bitmask;
+
+  #if SERIAL_DEBUG
+    if (cycles >= CAPTOUCH_TRIGGER) {
+      Serial.print("Sensor::");
+      Serial.print(pinToMeasure);
+      Serial.print("::");
+      Serial.print(cycles);
+      Serial.print(" TOUCHED");
+      Serial.println();
+    }
+  #endif
+  return cycles;
 }
 
-
-/* END PWM AUDIO CODE */
+#endif
 

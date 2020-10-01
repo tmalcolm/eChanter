@@ -1,0 +1,30 @@
+https://groups.google.com/forum/#!searchin/mozzi-users/samples/mozzi-users/2NJAkTukAbo/nn8C2aeWjiMJ
+
+Mr Sensorium 	
+12/4/13
+Hi Philippe,
+you might be able to do it better with a tool like sox, but anyway, with
+Audacity, how about this:
+
+Set the project rate so that the duration of your wave will make it fit into
+8192 samples of audio played back at that rate. eg.
+
+original_duration = 0.6 seconds
+original_number_of_samples = 10000
+original_sample_rate = 10000 * 1/0.6 = 16666.66 Hz
+
+To get the sound to be 8192 samples long,
+set the project rate to 
+   original_sample_rate * 8192/original_number_of_samples = 13653 Hz
+
+To check, 0.6 seconds * 13653 Hz = 8191.8
+
+Then export your sample to raw 8 bit and it should be OK to convert with
+char2mozzi.py
+
+You might have to manually adjust the file produced by char2mozzi.py, if it
+makes it a sample too short..
+
+Does that make sense?  Will it work?
+
+Tim
