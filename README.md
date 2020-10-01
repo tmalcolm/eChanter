@@ -29,13 +29,11 @@ Main Branch
 
 Requirements
 ------------------------------
-1.0 and 2.0 
-
-	- Arduino IDE version 1.5.7
+Arduino IDE version 1.5.7
 	
-	- Any 'Duino that uses the ATMega328 uC
+Any 'Duino that uses the ATMega328 uC
 	
-3.0 also requires Mozzi Synth http://sensorium.github.io/Mozzi/ version 2014-08-09-14:15 
+3.0 requires Mozzi Synth http://sensorium.github.io/Mozzi/ version 2014-08-09-14:15 
 
 
 
