@@ -3,7 +3,8 @@ The original eChanter Electronic Bagpipe for Arduino.
 
 Branches/Versions
 ------------------------------
-Main 	- last version to be verified, pinouts for Arduino Nano boards.
+Main Branch
+	- last version, pinouts for Arduino Nano boards.
 
 	- wavetable systhesis, real GHB and PC samples
 	
@@ -11,11 +12,13 @@ Main 	- last version to be verified, pinouts for Arduino Nano boards.
 	
 	- configuration at runtime
 	
-2.0 	- pinouts for Arduino Nano boards.
+2.0 Branch
+	- pinouts for Arduino Nano boards.
 
 	- wavetable systhesis, synthesized samples
 	
-1.0 	- pinouts for Arduino Duemilanove (and pin compatable) ATmega328p boards
+1.0 Branch
+	- pinouts for Arduino Duemilanove (and pin compatable) ATmega328p boards
 
 	- wavetable systhesis, synthesized samples
 
